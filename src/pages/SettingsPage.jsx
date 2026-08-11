@@ -1,8 +1,23 @@
 import { useEffect, useRef, useState } from 'react'
-import { AlertTriangle, Info, Trash2, X } from 'lucide-react'
+import { AlertTriangle, Info, LogOut, Trash2, X } from 'lucide-react'
+import { useAuth } from '../auth/AuthContext'
 import Toggle from '../components/Toggle'
-import { demoDevice, demoUser } from '../data/demoData'
+import { demoDevice } from '../data/demoData'
 import { formatDate } from '../utils/formatters'
+
+function getInitials(name, email) {
+  const words = name?.trim().split(/\s+/).filter(Boolean) ?? []
+
+  if (words.length > 0) {
+    return words
+      .slice(0, 2)
+      .map((word) => word[0])
+      .join('')
+      .toUpperCase()
+  }
+
+  return email?.trim().slice(0, 2).toUpperCase() || 'US'
+}
 
 function ConfirmDeleteModal({ deviceName, onCancel, onConfirm }) {
   const cancelButtonRef = useRef(null)
@@ -61,6 +76,7 @@ function ConfirmDeleteModal({ deviceName, onCancel, onConfirm }) {
 }
 
 function SettingsPage() {
+  const { logout, user } = useAuth()
   const [classroomName, setClassroomName] = useState(demoDevice.nombre)
   const [automaticAlerts, setAutomaticAlerts] = useState(demoDevice.alertas_activas)
   const [nameError, setNameError] = useState('')
@@ -86,6 +102,10 @@ function SettingsPage() {
   }
 
   const visibleDeviceName = classroomName.trim() || demoDevice.nombre
+  const accountName = user?.nombre || 'Usuario de AulaSense'
+  const accountEmail = user?.email || 'Correo no disponible'
+  const accountRole = user?.rol || 'Rol no disponible'
+  const accountInitials = getInitials(user?.nombre, user?.email)
 
   return (
     <main className="page-shell max-w-[1128px]">
@@ -154,18 +174,31 @@ function SettingsPage() {
           <h2 id="account-title" className="text-xl font-semibold">Cuenta</h2>
 
           <div className="mt-6 flex flex-col gap-5 sm:flex-row sm:items-center">
-            <div className="grid size-16 shrink-0 place-items-center rounded-full bg-[var(--color-primary-soft)] text-lg font-semibold text-[var(--color-primary-dark)]" aria-hidden="true">JM</div>
+            <div className="grid size-16 shrink-0 place-items-center rounded-full bg-[var(--color-primary-soft)] text-lg font-semibold text-[var(--color-primary-dark)]" aria-hidden="true">{accountInitials}</div>
             <div className="min-w-0 flex-1">
-              <p className="truncate text-lg font-semibold">{demoUser.nombre}</p>
-              <p className="truncate text-[var(--color-muted)]">{demoUser.email}</p>
+              <p className="truncate text-lg font-semibold">{accountName}</p>
+              <p className="truncate text-[var(--color-muted)]">{accountEmail}</p>
             </div>
-            <span className="w-fit rounded-full bg-[var(--color-primary-soft)] px-4 py-1.5 text-sm font-medium capitalize text-[#17685d]">{demoUser.rol}</span>
+            <span className="w-fit rounded-full bg-[var(--color-primary-soft)] px-4 py-1.5 text-sm font-medium capitalize text-[#17685d]">{accountRole}</span>
           </div>
 
           <div className="mt-6 flex flex-col gap-2 border-t border-[var(--color-border)] pt-5 text-[var(--color-muted)] sm:flex-row sm:items-center sm:justify-between">
             <span>Registrado desde</span>
-            <time dateTime={demoUser.creado_en} className="font-medium text-[var(--color-ink)]">{formatDate(demoUser.creado_en)}</time>
+            {user?.creado_en ? (
+              <time dateTime={user.creado_en} className="font-medium text-[var(--color-ink)]">{formatDate(user.creado_en)}</time>
+            ) : (
+              <span className="font-medium text-[var(--color-ink)]">No disponible</span>
+            )}
           </div>
+
+          <button
+            type="button"
+            onClick={logout}
+            className="mt-5 inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-[var(--color-border)] px-4 text-sm font-semibold text-[#526476] transition-colors hover:border-[#b9d9d2] hover:bg-[var(--color-primary-soft)] hover:text-[var(--color-primary-dark)]"
+          >
+            <LogOut aria-hidden="true" className="size-4" />
+            Cerrar sesión
+          </button>
         </section>
 
         <section className="rounded-[1.125rem] border border-red-200 bg-white p-5 sm:p-7" aria-labelledby="danger-title">

@@ -1,9 +1,11 @@
 import { lazy, Suspense } from 'react'
 import { Navigate, Route, Routes } from 'react-router-dom'
-import Header from './components/Header'
+import ProtectedRoute from './auth/ProtectedRoute'
+import AuthenticatedLayout from './layouts/AuthenticatedLayout'
 
 const DashboardPage = lazy(() => import('./pages/DashboardPage'))
 const HistoryPage = lazy(() => import('./pages/HistoryPage'))
+const LoginPage = lazy(() => import('./pages/LoginPage'))
 const SettingsPage = lazy(() => import('./pages/SettingsPage'))
 
 function PageLoading() {
@@ -18,18 +20,21 @@ function PageLoading() {
 
 function App() {
   return (
-    <div className="min-h-screen bg-[var(--color-app-background)] text-[var(--color-ink)]">
-      <Header />
-      <Suspense fallback={<PageLoading />}>
-        <Routes>
-          <Route path="/" element={<DashboardPage />} />
-          <Route path="/resumen" element={<DashboardPage />} />
-          <Route path="/historial" element={<HistoryPage />} />
-          <Route path="/configuracion" element={<SettingsPage />} />
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </Suspense>
-    </div>
+    <Suspense fallback={<PageLoading />}>
+      <Routes>
+        <Route path="/login" element={<LoginPage />} />
+
+        <Route element={<ProtectedRoute />}>
+          <Route element={<AuthenticatedLayout />}>
+            <Route path="/" element={<DashboardPage />} />
+            <Route path="/resumen" element={<DashboardPage />} />
+            <Route path="/historial" element={<HistoryPage />} />
+            <Route path="/configuracion" element={<SettingsPage />} />
+            <Route path="*" element={<Navigate to="/resumen" replace />} />
+          </Route>
+        </Route>
+      </Routes>
+    </Suspense>
   )
 }
 
