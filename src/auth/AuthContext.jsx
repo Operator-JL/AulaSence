@@ -1,61 +1,44 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
+import { supabase } from '../lib/supabaseClient'
 import { authService } from '../services/authService'
-import { clearSession, readSession, writeSession } from './sessionStore'
 
 const AuthContext = createContext(null)
 
 export function AuthProvider({ children }) {
-  const [session, setSession] = useState(() => readSession())
+  const [session, setSession] = useState(null)
   const [isAuthenticating, setIsAuthenticating] = useState(false)
 
-  const login = useCallback(async (credentials, options) => {
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => setSession(data.session))
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      setSession(nextSession)
+    })
+    return () => sub.subscription.unsubscribe()
+  }, [])
+
+  const login = useCallback(async (credentials) => {
     setIsAuthenticating(true)
 
     try {
-      const nextSession = await authService.login(credentials, options)
-      const storedSession = writeSession(nextSession)
-      setSession(storedSession)
-      return storedSession
+      const nextSession = await authService.login(credentials)
+      setSession(nextSession)
+      return nextSession
     } finally {
       setIsAuthenticating(false)
     }
   }, [])
 
-  const logout = useCallback(() => {
-    clearSession()
+  const logout = useCallback(async () => {
+    await authService.logout()
     setSession(null)
   }, [])
-
-  useEffect(() => {
-    if (!session?.expiresAt) return undefined
-
-    const maximumTimeout = 2_147_483_647
-    let timeoutId
-
-    const scheduleExpiration = () => {
-      const expiresIn = new Date(session.expiresAt).getTime() - Date.now()
-
-      if (expiresIn <= 0) {
-        logout()
-        return
-      }
-
-      timeoutId = window.setTimeout(
-        scheduleExpiration,
-        Math.min(expiresIn, maximumTimeout),
-      )
-    }
-
-    scheduleExpiration()
-    return () => window.clearTimeout(timeoutId)
-  }, [logout, session?.expiresAt])
 
   const value = useMemo(
     () => ({
       session,
       user: session?.user ?? null,
-      accessToken: session?.accessToken ?? null,
-      isAuthenticated: Boolean(session?.accessToken && session?.user),
+      accessToken: session?.access_token ?? null,
+      isAuthenticated: Boolean(session?.access_token && session?.user),
       isAuthenticating,
       login,
       logout,

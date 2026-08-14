@@ -2,7 +2,6 @@ import { useState } from 'react'
 import { LoaderCircle, LockKeyhole, Mail, ShieldCheck } from 'lucide-react'
 import { Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
-import { AuthNotConfiguredError } from '../services/authService'
 
 function getRequestedPath(location) {
   const requestedLocation = location.state?.from
@@ -44,8 +43,8 @@ export default function LoginPage() {
       navigate(requestedPath, { replace: true })
     } catch (error) {
       setErrorMessage(
-        error instanceof AuthNotConfiguredError
-          ? error.message
+        error?.message === 'Invalid login credentials'
+          ? 'Correo o contraseña incorrectos.'
           : 'No fue posible iniciar sesión. Inténtalo de nuevo.',
       )
     }
