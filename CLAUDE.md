@@ -2,7 +2,7 @@
 
 ## Project overview
 
-`AulaSence` is the React frontend for AulaSense: an IoT classroom monitoring dashboard. It displays DHT11 sensor readings (temperature and humidity), controls actuators (LED, buzzer), and shows historical data. The app is in demo mode — all data currently comes from static fixtures in `src/data/demoData.js`; no real backend is wired yet.
+`AulaSence` is the React frontend for AulaSense: an IoT classroom monitoring dashboard. It displays DHT11 sensor readings (temperature and humidity), controls actuators (LED, buzzer), and shows historical data. All pages are wired to the real FastAPI backend (`VITE_API_BASE_URL`) through `src/services/api.js`, with Supabase handling authentication. The six endpoints of the backend contract (`AulaSense-Backend/CLAUDE.md §8`) are all in use: device listing, latest reading, readings history, device PATCH (name/thresholds/alerts), actuators PATCH, and device DELETE.
 
 ## Running the app
 
@@ -21,7 +21,7 @@ npm run preview  # Preview production build locally
 - **Recharts** for sensor charts
 - **lucide-react** for icons
 - **xlsx** (SheetJS) for Excel export (`src/utils/exportExcel.js`)
-- **@supabase/supabase-js** — auth (GoTrue) and session management (to be installed; not yet in `package.json`)
+- **@supabase/supabase-js** — auth (GoTrue) and session management
 
 ## Project structure
 
@@ -31,11 +31,11 @@ src/
   main.jsx                 # React root, AuthProvider wrapper
   index.css                # Global CSS variables and utility classes
   auth/
-    AuthContext.jsx        # useAuth() hook + AuthProvider
+    AuthContext.jsx        # useAuth() hook + AuthProvider (Supabase session via getSession + onAuthStateChange)
     ProtectedRoute.jsx     # Redirects unauthenticated users to /login
-    sessionStore.js        # sessionStorage read/write/clear with validation
+    sessionStore.js        # OBSOLETO: sin imports. Supabase persiste la sesión; pendiente de borrar
   components/
-    ActuatorPanel.jsx      # LED + buzzer toggles, automatic/manual mode
+    ActuatorPanel.jsx      # LED + buzzer toggles — PATCH /api/devices/:id/actuators (recibe prop `device`)
     Header.jsx             # Top navigation bar
     MetricCard.jsx         # Single-value stat card
     ReadingsTable.jsx      # Tabular history of sensor readings
@@ -43,16 +43,19 @@ src/
     StatusBadge.jsx        # Colored badge for sensor state (normal / temp_alta…)
     Toggle.jsx             # Accessible on/off toggle switch
   data/
-    demoData.js            # Static demo fixtures (user, device, readings)
+    demoData.js            # OBSOLETO: fixtures sin imports; pendiente de borrar
   layouts/
     AuthenticatedLayout.jsx  # Shell with Header + <Outlet>
+  lib/
+    supabaseClient.js      # createClient con VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY
   pages/
-    DashboardPage.jsx      # / and /resumen — live sensor charts + actuator panel
-    HistoryPage.jsx        # /historial — readings table + threshold settings
+    DashboardPage.jsx      # / and /resumen — live sensor charts + actuator panel (refresca cada 30 s)
+    HistoryPage.jsx        # /historial — readings table + threshold settings (PATCH)
     LoginPage.jsx          # /login
-    SettingsPage.jsx       # /configuracion
+    SettingsPage.jsx       # /configuracion — device PATCH, cuenta Supabase, device DELETE
   services/
-    authService.js         # login() stub — throws AuthNotConfiguredError until backend is ready
+    api.js                 # Cliente único del backend: Bearer token + los 6 endpoints de /api
+    authService.js         # login()/logout() con supabase.auth
   utils/
     exportExcel.js         # exportReadingsToExcel(readings)
     formatters.js          # Date/number formatting helpers
@@ -78,16 +81,17 @@ El login **no** pasa por el backend de FastAPI. Flujo real con Supabase:
 3. Cada request al backend incluye `Authorization: Bearer <access_token>`.
 4. El backend FastAPI verifica el token; React nunca verifica JWTs.
 
-### Estado actual del código (pendiente de migrar)
+### Implementación
 
-El código actual usa un flujo propio que **aún no está conectado a Supabase**:
-- `authService.js` — `login()` lanza `AuthNotConfiguredError`. Debe reemplazarse con `supabase.auth.signInWithPassword()`.
-- `sessionStore.js` — persiste la sesión en `sessionStorage` manualmente. Supabase ya maneja esto internamente; este archivo quedará obsoleto.
-- `AuthContext.jsx` — gestiona la sesión en React. Debe reescribirse para consumir `supabase.auth.getSession()` y el listener `onAuthStateChange`.
+La migración a Supabase ya está hecha:
+- `authService.js` — `login()` llama a `supabase.auth.signInWithPassword()`; `logout()` a `signOut()`.
+- `AuthContext.jsx` — consume `supabase.auth.getSession()` y el listener `onAuthStateChange`. `useAuth()` expone `session`, `user`, `accessToken`, `isAuthenticated`, `isAuthenticating`, `login`, `logout`.
+- `sessionStore.js` — **obsoleto y sin imports** (Supabase persiste y refresca el token solo). Se conserva únicamente hasta que se decida borrarlo; no volver a importarlo.
+- Los datos de cuenta en Configuración salen del usuario de Supabase: `user.email`, `user.created_at`, `user.user_metadata.nombre` / `.rol`.
 
 ### Cliente Supabase
 
-Crear `src/lib/supabaseClient.js` con las variables de entorno de Vite:
+`src/lib/supabaseClient.js` crea el cliente con las variables de entorno de Vite:
 
 ```js
 import { createClient } from '@supabase/supabase-js'
@@ -107,26 +111,29 @@ VITE_API_BASE_URL=https://...  # URL del backend FastAPI en Oracle
 
 ### Llamadas al backend
 
-Todas las rutas de `/api` requieren el token de Supabase:
+Todas las llamadas a `/api` pasan por `src/services/api.js`, que obtiene la sesión con `supabase.auth.getSession()` y agrega `Authorization: Bearer <access_token>` en cada request. No hacer `fetch` directo al backend desde páginas o componentes — usar siempre `api.*`:
 
 ```js
-const { data: { session } } = await supabase.auth.getSession()
-fetch(`${import.meta.env.VITE_API_BASE_URL}/api/devices`, {
-  headers: { Authorization: `Bearer ${session.access_token}` },
-})
+import { api } from '../services/api'
+
+const devices = await api.getDevices()
+const latest = await api.getLatestReading(deviceId)   // null si responde 204 (sin lecturas)
+const history = await api.getReadings(deviceId, { from, to, limit })
+await api.updateDevice(deviceId, { nombre, tempMin, tempMax, humMin, humMax, alertsEnabled })
+await api.updateActuators(deviceId, { mode, led, buzzer })
+await api.deleteDevice(deviceId)
 ```
 
-El backend responde en **camelCase** (`tempMin`, `lastSeenAt`, `alertsEnabled`). No transformar los nombres en el frontend.
+El backend responde en **camelCase** (`tempMin`, `lastSeenAt`, `alertsEnabled`). No transformar los nombres en el frontend. Los errores de FastAPI (`{"detail": "..."}`) se relanzan como `Error` con ese mensaje.
 
-## Demo data
+Reglas del contrato reflejadas en el frontend (detalle en `AulaSense-Backend/CLAUDE.md §8`):
+- `getReadings` devuelve la serie **ascendente** por `measuredAt` (las gráficas la usan tal cual; la tabla del historial la invierte).
+- `updateActuators` con `mode: "auto"` manda **solo** `mode` — el backend responde 422 si van `led`/`buzzer`. El toggle del LED mapea a `"rojo"`/`"apagado"`.
+- `deleteDevice` es **destructivo** (cascade sobre `lecturas`): el modal de Configuración exige teclear el nombre guardado del dispositivo antes de habilitar la confirmación.
 
-All visible data is hardcoded in `src/data/demoData.js`:
-- `demoUser` — teacher account
-- `demoDevice` — ESP32 device `esp32-aula-a1` (Aula A1) with threshold values
-- `demoReadings` — 9 hourly readings on 2026-08-03
-- `currentReading` — alias for the most recent reading
+## Datos
 
-Cuando se conecte el backend real, reemplazar los imports de `demoData` con llamadas a los endpoints del backend (ver contrato en `AulaSense-Backend/CLAUDE.md §8`).
+Todos los datos visibles vienen del backend; no hay modo demo. `src/data/demoData.js` sigue en el repo pero **nada lo importa** — es un remanente pendiente de borrar; no usarlo en código nuevo. Si el usuario autenticado no tiene filas en `dispositivos`, las páginas muestran estados vacíos/de error, no fixtures.
 
 ## CSS conventions
 
