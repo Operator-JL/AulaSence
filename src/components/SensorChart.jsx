@@ -134,7 +134,7 @@ export default function SensorChart({
         ...reading,
         chartTime:
           reading.hora ??
-          (reading.medido_en ? formatTime(reading.medido_en) : ''),
+          (reading.measuredAt ? formatTime(reading.measuredAt) : ''),
       })),
     [data],
   );

@@ -24,15 +24,15 @@ export async function exportReadingsToExcel(
   const XLSX = await import('xlsx');
 
   const rows = readings.map((reading) => ({
-    Fecha: formatDate(reading.medido_en, {
+    Fecha: formatDate(reading.measuredAt, {
       day: '2-digit',
       month: '2-digit',
       year: 'numeric',
     }),
-    Hora: formatTime(reading.medido_en),
-    'Temperatura (°C)': Number(reading.temperatura),
-    'Humedad (%)': Number(reading.humedad),
-    Estado: getStatusLabel(reading.estado),
+    Hora: formatTime(reading.measuredAt),
+    'Temperatura (°C)': Number(reading.temperature),
+    'Humedad (%)': Number(reading.humidity),
+    Estado: getStatusLabel(reading.status),
   }));
 
   const worksheet = XLSX.utils.json_to_sheet(rows, {

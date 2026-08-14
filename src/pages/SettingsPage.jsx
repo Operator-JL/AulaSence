@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { AlertTriangle, Info, LogOut, Trash2, X } from 'lucide-react'
 import { useAuth } from '../auth/AuthContext'
 import Toggle from '../components/Toggle'
-import { demoDevice } from '../data/demoData'
+import { api } from '../services/api'
 import { formatDate } from '../utils/formatters'
 
 function getInitials(name, email) {
@@ -77,23 +77,59 @@ function ConfirmDeleteModal({ deviceName, onCancel, onConfirm }) {
 
 function SettingsPage() {
   const { logout, user } = useAuth()
-  const [classroomName, setClassroomName] = useState(demoDevice.nombre)
-  const [automaticAlerts, setAutomaticAlerts] = useState(demoDevice.alertas_activas)
+  const [device, setDevice] = useState(null)
+  const [classroomName, setClassroomName] = useState('')
+  const [automaticAlerts, setAutomaticAlerts] = useState(true)
   const [nameError, setNameError] = useState('')
   const [saveNotice, setSaveNotice] = useState('')
+  const [saving, setSaving] = useState(false)
   const [deleteNotice, setDeleteNotice] = useState('')
   const [deleteModalOpen, setDeleteModalOpen] = useState(false)
 
-  const handleSave = (event) => {
+  useEffect(() => {
+    let cancelled = false
+
+    api.getDevices()
+      .then((devices) => {
+        const firstDevice = devices?.[0]
+        if (cancelled || !firstDevice) return
+        setDevice(firstDevice)
+        setClassroomName(firstDevice.nombre)
+        setAutomaticAlerts(firstDevice.alertsEnabled)
+      })
+      .catch(() => {
+        if (!cancelled) setNameError('No fue posible cargar el dispositivo.')
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const handleSave = async (event) => {
     event.preventDefault()
     if (!classroomName.trim()) {
       setNameError('Escribe un nombre para el aula')
       setSaveNotice('')
       return
     }
+    if (!device) return
 
     setNameError('')
-    setSaveNotice('Cambios guardados correctamente')
+    setSaveNotice('')
+    setSaving(true)
+    try {
+      const updatedDevice = await api.updateDevice(device.id, {
+        nombre: classroomName.trim(),
+        alertsEnabled: automaticAlerts,
+      })
+      setDevice(updatedDevice)
+      setSaveNotice('Cambios guardados correctamente')
+    } catch (error) {
+      setNameError(error.message || 'No fue posible guardar los cambios.')
+    } finally {
+      setSaving(false)
+    }
   }
 
   const handleDeleteConfirm = () => {
@@ -101,11 +137,11 @@ function SettingsPage() {
     setDeleteNotice('Demostración completada: no se eliminó ningún dato real')
   }
 
-  const visibleDeviceName = classroomName.trim() || demoDevice.nombre
-  const accountName = user?.nombre || 'Usuario de AulaSense'
+  const visibleDeviceName = classroomName.trim() || device?.nombre || 'el dispositivo'
+  const accountName = user?.user_metadata?.nombre || user?.email || 'Usuario de AulaSense'
   const accountEmail = user?.email || 'Correo no disponible'
-  const accountRole = user?.rol || 'Rol no disponible'
-  const accountInitials = getInitials(user?.nombre, user?.email)
+  const accountRole = user?.user_metadata?.rol || 'docente'
+  const accountInitials = getInitials(user?.user_metadata?.nombre, user?.email)
 
   return (
     <main className="page-shell max-w-[1128px]">
@@ -140,7 +176,7 @@ function SettingsPage() {
 
               <div>
                 <label htmlFor="device-code" className="mb-2 block font-medium text-[var(--color-muted)]">Código del dispositivo</label>
-                <input id="device-code" value={demoDevice.codigo} readOnly className="field-input font-mono" />
+                <input id="device-code" value={device?.codigo ?? ''} readOnly className="field-input font-mono" />
               </div>
             </div>
 
@@ -165,7 +201,9 @@ function SettingsPage() {
               />
             </div>
 
-            <button type="submit" className="primary-button mt-6 w-full text-base">Guardar cambios</button>
+            <button type="submit" className="primary-button mt-6 w-full text-base disabled:cursor-not-allowed disabled:opacity-65" disabled={saving || !device}>
+              {saving ? 'Guardando...' : 'Guardar cambios'}
+            </button>
             {saveNotice && <p className="notice mt-4" role="status">{saveNotice}</p>}
           </form>
         </section>
@@ -184,8 +222,8 @@ function SettingsPage() {
 
           <div className="mt-6 flex flex-col gap-2 border-t border-[var(--color-border)] pt-5 text-[var(--color-muted)] sm:flex-row sm:items-center sm:justify-between">
             <span>Registrado desde</span>
-            {user?.creado_en ? (
-              <time dateTime={user.creado_en} className="font-medium text-[var(--color-ink)]">{formatDate(user.creado_en)}</time>
+            {user?.created_at ? (
+              <time dateTime={user.created_at} className="font-medium text-[var(--color-ink)]">{formatDate(user.created_at)}</time>
             ) : (
               <span className="font-medium text-[var(--color-ink)]">No disponible</span>
             )}

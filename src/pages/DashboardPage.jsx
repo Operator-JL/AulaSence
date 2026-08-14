@@ -1,13 +1,30 @@
+import { useCallback, useEffect, useState } from 'react'
 import { Clock3 } from 'lucide-react'
 import ActuatorPanel from '../components/ActuatorPanel'
 import SensorChart from '../components/SensorChart'
-import { currentReading, demoDevice, demoReadings } from '../data/demoData'
+import { api } from '../services/api'
 
-const chartReadings = [...demoReadings].reverse()
+const REFRESH_INTERVAL_MS = 30_000
 
-function getHourlyTrend(dataKey) {
-  const previousValue = Number(demoReadings[1]?.[dataKey])
-  const currentValue = Number(currentReading[dataKey])
+// Tendencia vs. la lectura más cercana a una hora antes de la última.
+function getHourlyTrend(readings, dataKey) {
+  if (readings.length < 2) return null
+
+  const latest = readings[readings.length - 1]
+  const latestTime = new Date(latest.measuredAt).getTime()
+  const oneHourBefore = latestTime - 60 * 60 * 1000
+
+  let reference = readings[0]
+  for (const reading of readings) {
+    if (new Date(reading.measuredAt).getTime() <= oneHourBefore) {
+      reference = reading
+    } else {
+      break
+    }
+  }
+
+  const previousValue = Number(reference[dataKey])
+  const currentValue = Number(latest[dataKey])
 
   if (!Number.isFinite(previousValue) || !Number.isFinite(currentValue)) {
     return null
@@ -22,6 +39,43 @@ function getHourlyTrend(dataKey) {
 }
 
 function DashboardPage() {
+  const [device, setDevice] = useState(null)
+  const [currentReading, setCurrentReading] = useState(null)
+  const [readings, setReadings] = useState([])
+  const [errorMessage, setErrorMessage] = useState('')
+
+  const loadData = useCallback(async () => {
+    try {
+      const devices = await api.getDevices()
+      const firstDevice = devices?.[0]
+
+      if (!firstDevice) {
+        setErrorMessage('No hay dispositivos vinculados a tu cuenta.')
+        return
+      }
+
+      const [latest, history] = await Promise.all([
+        api.getLatestReading(firstDevice.id),
+        api.getReadings(firstDevice.id, { limit: 200 }),
+      ])
+
+      setDevice(firstDevice)
+      setReadings(history?.readings ?? [])
+      setCurrentReading(latest ?? history?.readings?.at(-1) ?? null)
+      setErrorMessage('')
+    } catch (error) {
+      setErrorMessage(error.message || 'No fue posible cargar las lecturas.')
+    }
+  }, [])
+
+  useEffect(() => {
+    loadData()
+    const intervalId = window.setInterval(loadData, REFRESH_INTERVAL_MS)
+    return () => window.clearInterval(intervalId)
+  }, [loadData])
+
+  const thresholds = device?.thresholds
+
   return (
     <main className="page-shell">
       <div className="mb-8 flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
@@ -32,9 +86,15 @@ function DashboardPage() {
 
         <div className="inline-flex w-fit items-center gap-2 rounded-full border border-[var(--color-border)] bg-white px-4 py-2 text-sm font-medium text-[var(--color-muted)] shadow-[0_4px_16px_rgb(15_32_51/0.04)]">
           <Clock3 aria-hidden="true" className="size-4 text-[var(--color-primary)]" />
-          <span>Actualizado en tiempo real</span>
+          <span>{device?.online ? 'Actualizado en tiempo real' : 'Dispositivo sin conexión'}</span>
         </div>
       </div>
+
+      {errorMessage && (
+        <p className="mb-6 rounded-xl border border-red-200 bg-[var(--color-danger-soft)] px-4 py-3 text-sm leading-5 text-[var(--color-danger)]" role="alert">
+          {errorMessage}
+        </p>
+      )}
 
       <div className="grid items-stretch gap-5 xl:grid-cols-[minmax(0,2fr)_minmax(300px,1fr)] xl:gap-6">
         <section
@@ -45,43 +105,35 @@ function DashboardPage() {
             type="temperature"
             title="Temperatura"
             subtitle="Sensor DHT11"
-            value={currentReading.temperatura}
+            value={currentReading?.temperature}
             unit="°C"
-            status={currentReading.estado}
+            status={currentReading?.status ?? 'normal'}
             range={
-              'Rango: ' +
-              demoDevice.temp_min +
-              ' °C – ' +
-              demoDevice.temp_max +
-              ' °C'
+              thresholds
+                ? 'Rango: ' + thresholds.tempMin + ' °C – ' + thresholds.tempMax + ' °C'
+                : undefined
             }
-            trend={getHourlyTrend('temperatura')}
-            chartTitle="Histórico de temperatura (hoy)"
-            data={chartReadings}
-            dataKey="temperatura"
-            domain={[18, 30]}
-            ticks={[18, 22, 26, 30]}
+            trend={getHourlyTrend(readings, 'temperature')}
+            chartTitle="Histórico de temperatura (24 h)"
+            data={readings}
+            dataKey="temperature"
           />
           <SensorChart
             type="humidity"
             title="Humedad relativa"
             subtitle="Sensor DHT11"
-            value={currentReading.humedad}
+            value={currentReading?.humidity}
             unit="%"
             status="normal"
             range={
-              'Rango: ' +
-              demoDevice.hum_min +
-              ' % – ' +
-              demoDevice.hum_max +
-              ' %'
+              thresholds
+                ? 'Rango: ' + thresholds.humMin + ' % – ' + thresholds.humMax + ' %'
+                : undefined
             }
-            trend={getHourlyTrend('humedad')}
-            chartTitle="Histórico de humedad (hoy)"
-            data={chartReadings}
-            dataKey="humedad"
-            domain={[30, 70]}
-            ticks={[30, 50, 70]}
+            trend={getHourlyTrend(readings, 'humidity')}
+            chartTitle="Histórico de humedad (24 h)"
+            data={readings}
+            dataKey="humidity"
           />
         </section>
 

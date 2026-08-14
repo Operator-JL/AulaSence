@@ -92,21 +92,21 @@ export default function ReadingsTable({
 
               {!loading &&
                 visibleReadings.map((reading) => (
-                  <tr key={reading.id} className="text-sm text-[#314458] transition-colors hover:bg-[#fbfcfc]">
+                  <tr key={reading.id ?? reading.measuredAt} className="text-sm text-[#314458] transition-colors hover:bg-[#fbfcfc]">
                     <td className="px-6 py-4 font-semibold text-[var(--color-ink)]">
-                      {formatTime(reading.medido_en)}
+                      {formatTime(reading.measuredAt)}
                     </td>
                     <td className="px-6 py-4 font-semibold">
-                      {formatNumber(reading.temperatura, {
+                      {formatNumber(reading.temperature, {
                         minimumFractionDigits: 1,
                         maximumFractionDigits: 1,
                       })}
                     </td>
                     <td className="px-6 py-4 font-semibold">
-                      {formatNumber(reading.humedad, { maximumFractionDigits: 0 })}
+                      {formatNumber(reading.humidity, { maximumFractionDigits: 0 })}
                     </td>
                     <td className="px-6 py-4">
-                      <StatusBadge status={reading.estado} />
+                      <StatusBadge status={reading.status} />
                     </td>
                   </tr>
                 ))}
