@@ -194,7 +194,7 @@ function HistoryPage() {
 
         <aside className="grid min-w-0 gap-5 md:grid-cols-2 lg:grid-cols-1 xl:gap-6" aria-label="Configuración de alertas y actuadores">
           {device && <ThresholdCard device={device} />}
-          <ActuatorPanel />
+          <ActuatorPanel device={device} />
         </aside>
       </div>
     </main>

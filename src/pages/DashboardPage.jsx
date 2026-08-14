@@ -138,7 +138,7 @@ function DashboardPage() {
         </section>
 
         <aside aria-label="Controles del aula" className="min-w-0">
-          <ActuatorPanel />
+          <ActuatorPanel device={device} />
         </aside>
       </div>
     </main>

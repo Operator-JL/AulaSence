@@ -1,7 +1,10 @@
 import { RotateCcw } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
+import { api } from '../services/api';
 import Toggle from './Toggle';
+
+const DEFAULT_ACTUATORS = { mode: 'auto', led: 'apagado', buzzer: false };
 
 function ManualControl({ color, label, checked, disabled, onChange }) {
   return (
@@ -29,15 +32,55 @@ function ManualControl({ color, label, checked, disabled, onChange }) {
   );
 }
 
-export default function ActuatorPanel({ className = '', initialAutomatic = true }) {
-  const [automaticMode, setAutomaticMode] = useState(initialAutomatic);
-  const [ledOn, setLedOn] = useState(false);
-  const [buzzerOn, setBuzzerOn] = useState(false);
+export default function ActuatorPanel({ className = '', device = null }) {
+  const [actuators, setActuators] = useState(device?.actuators ?? DEFAULT_ACTUATORS);
+  const [pending, setPending] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
+
+  // El estado confirmado llega del ESP32 vía el ingestor; al refrescar el
+  // dispositivo desde la página, lo reportado por el equipo gana.
+  useEffect(() => {
+    if (device?.actuators) setActuators(device.actuators);
+  }, [device]);
+
+  const automaticMode = actuators.mode !== 'manual';
+  const ledOn = Boolean(actuators.led) && actuators.led !== 'apagado';
+  const buzzerOn = Boolean(actuators.buzzer);
+
+  const sendUpdate = async (body) => {
+    if (!device || pending) return;
+
+    setPending(true);
+    setErrorMessage('');
+    try {
+      const updatedDevice = await api.updateActuators(device.id, body);
+      setActuators(updatedDevice?.actuators ?? body);
+    } catch (error) {
+      setErrorMessage(error.message || 'No fue posible enviar el comando al dispositivo.');
+    } finally {
+      setPending(false);
+    }
+  };
+
+  // En modo auto el backend rechaza led/buzzer en el body (422): solo se manda mode.
+  const handleModeChange = (nextAutomatic) => {
+    if (nextAutomatic) {
+      sendUpdate({ mode: 'auto' });
+    } else {
+      sendUpdate({ mode: 'manual', led: actuators.led ?? 'apagado', buzzer: buzzerOn });
+    }
+  };
+
+  const handleLedChange = (nextOn) => {
+    sendUpdate({ mode: 'manual', led: nextOn ? 'rojo' : 'apagado', buzzer: buzzerOn });
+  };
+
+  const handleBuzzerChange = (nextOn) => {
+    sendUpdate({ mode: 'manual', led: actuators.led ?? 'apagado', buzzer: nextOn });
+  };
 
   const resetAutomaticMode = () => {
-    setAutomaticMode(true);
-    setLedOn(false);
-    setBuzzerOn(false);
+    sendUpdate({ mode: 'auto' });
   };
 
   return (
@@ -60,7 +103,8 @@ export default function ActuatorPanel({ className = '', initialAutomatic = true 
         </div>
         <Toggle
           checked={automaticMode}
-          onChange={setAutomaticMode}
+          onChange={handleModeChange}
+          disabled={pending || !device}
           label={automaticMode ? 'Desactivar modo automático' : 'Activar modo automático'}
         />
       </div>
@@ -76,24 +120,31 @@ export default function ActuatorPanel({ className = '', initialAutomatic = true 
             color="bg-[var(--color-success)]"
             label="LED de alerta"
             checked={ledOn}
-            disabled={automaticMode}
-            onChange={setLedOn}
+            disabled={automaticMode || pending || !device}
+            onChange={handleLedChange}
           />
           <ManualControl
             color="bg-[var(--color-warning)]"
             label="Buzzer"
             checked={buzzerOn}
-            disabled={automaticMode}
-            onChange={setBuzzerOn}
+            disabled={automaticMode || pending || !device}
+            onChange={handleBuzzerChange}
           />
         </div>
       </div>
+
+      {errorMessage && (
+        <p className="mt-4 rounded-xl border border-red-200 bg-[var(--color-danger-soft)] px-4 py-3 text-sm leading-5 text-[var(--color-danger)]" role="alert">
+          {errorMessage}
+        </p>
+      )}
 
       <div className="mt-auto pt-5">
         <button
           type="button"
           onClick={resetAutomaticMode}
-          className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl border border-[#a9ddd3] px-4 py-3 text-sm font-semibold text-[var(--color-primary-dark)] transition-colors hover:bg-[var(--color-primary-soft)]"
+          disabled={pending || !device || automaticMode}
+          className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl border border-[#a9ddd3] px-4 py-3 text-sm font-semibold text-[var(--color-primary-dark)] transition-colors hover:bg-[var(--color-primary-soft)] disabled:cursor-not-allowed disabled:opacity-50"
         >
           <RotateCcw className="h-4 w-4" aria-hidden="true" />
           Restablecer modo automático
