@@ -21,6 +21,10 @@ function getInitials(name, email) {
 
 function ConfirmDeleteModal({ deviceName, onCancel, onConfirm }) {
   const cancelButtonRef = useRef(null)
+  const [confirmText, setConfirmText] = useState('')
+  const [deleting, setDeleting] = useState(false)
+  const [errorMessage, setErrorMessage] = useState('')
+  const nameMatches = confirmText.trim() === deviceName
 
   useEffect(() => {
     const previousFocus = document.activeElement
@@ -37,8 +41,21 @@ function ConfirmDeleteModal({ deviceName, onCancel, onConfirm }) {
     }
   }, [onCancel])
 
+  const handleConfirm = async () => {
+    if (!nameMatches || deleting) return
+
+    setDeleting(true)
+    setErrorMessage('')
+    try {
+      await onConfirm()
+    } catch (error) {
+      setErrorMessage(error.message || 'No fue posible eliminar el dispositivo.')
+      setDeleting(false)
+    }
+  }
+
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-[#102033]/45 p-4" onMouseDown={onCancel}>
+    <div className="fixed inset-0 z-50 grid place-items-center bg-[#102033]/45 p-4" onMouseDown={deleting ? undefined : onCancel}>
       <section
         role="dialog"
         aria-modal="true"
@@ -51,23 +68,44 @@ function ConfirmDeleteModal({ deviceName, onCancel, onConfirm }) {
           <div className="grid size-11 shrink-0 place-items-center rounded-full bg-[var(--color-danger-soft)] text-[var(--color-danger)]">
             <AlertTriangle aria-hidden="true" className="size-5" />
           </div>
-          <button type="button" onClick={onCancel} aria-label="Cerrar confirmación" className="rounded-lg p-1.5 text-[var(--color-muted)] hover:bg-slate-100 hover:text-[var(--color-ink)]">
+          <button type="button" onClick={onCancel} disabled={deleting} aria-label="Cerrar confirmación" className="rounded-lg p-1.5 text-[var(--color-muted)] hover:bg-slate-100 hover:text-[var(--color-ink)] disabled:cursor-not-allowed disabled:opacity-50">
             <X aria-hidden="true" className="size-5" />
           </button>
         </div>
 
         <h2 id="delete-modal-title" className="mt-5 text-xl font-bold">¿Eliminar {deviceName}?</h2>
         <p id="delete-modal-description" className="mt-2 text-sm leading-6 text-[var(--color-muted)]">
-          En el sistema real se borrarían el dispositivo y todas sus lecturas. Esta demostración es local y no elimina datos reales.
+          Se eliminarán el dispositivo y todas sus lecturas registradas de forma permanente. Esta acción no se puede deshacer.
         </p>
 
+        <div className="mt-5">
+          <label htmlFor="delete-confirm-name" className="mb-2 block text-sm font-medium text-[var(--color-muted)]">
+            Escribe <span className="font-semibold text-[var(--color-ink)]">{deviceName}</span> para confirmar
+          </label>
+          <input
+            id="delete-confirm-name"
+            value={confirmText}
+            onChange={(event) => setConfirmText(event.target.value)}
+            disabled={deleting}
+            autoComplete="off"
+            className="field-input"
+            placeholder={deviceName}
+          />
+        </div>
+
+        {errorMessage && (
+          <p className="mt-4 rounded-xl border border-red-200 bg-[var(--color-danger-soft)] px-4 py-3 text-sm leading-5 text-[var(--color-danger)]" role="alert">
+            {errorMessage}
+          </p>
+        )}
+
         <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-          <button ref={cancelButtonRef} type="button" onClick={onCancel} className="min-h-11 rounded-xl border border-[var(--color-border)] px-4 font-semibold text-[var(--color-ink)] hover:bg-slate-50">
+          <button ref={cancelButtonRef} type="button" onClick={onCancel} disabled={deleting} className="min-h-11 rounded-xl border border-[var(--color-border)] px-4 font-semibold text-[var(--color-ink)] hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50">
             Cancelar
           </button>
-          <button type="button" onClick={onConfirm} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-[var(--color-danger)] px-4 font-semibold text-white hover:bg-red-700">
+          <button type="button" onClick={handleConfirm} disabled={!nameMatches || deleting} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-[var(--color-danger)] px-4 font-semibold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50">
             <Trash2 aria-hidden="true" className="size-4" />
-            Confirmar eliminación
+            {deleting ? 'Eliminando...' : 'Confirmar eliminación'}
           </button>
         </div>
       </section>
@@ -132,9 +170,13 @@ function SettingsPage() {
     }
   }
 
-  const handleDeleteConfirm = () => {
+  const handleDeleteConfirm = async () => {
+    await api.deleteDevice(device.id)
     setDeleteModalOpen(false)
-    setDeleteNotice('Demostración completada: no se eliminó ningún dato real')
+    setDevice(null)
+    setClassroomName('')
+    setAutomaticAlerts(true)
+    setDeleteNotice('Dispositivo eliminado junto con todas sus lecturas.')
   }
 
   const visibleDeviceName = classroomName.trim() || device?.nombre || 'el dispositivo'
@@ -244,11 +286,12 @@ function SettingsPage() {
           <p className="mt-1 leading-6 text-[var(--color-muted)]">Se borran también todas sus lecturas registradas. No se puede deshacer.</p>
           <button
             type="button"
+            disabled={!device}
             onClick={() => {
               setDeleteNotice('')
               setDeleteModalOpen(true)
             }}
-            className="mt-6 inline-flex min-h-12 items-center justify-center gap-2 rounded-xl border border-red-300 px-5 font-semibold text-[var(--color-danger)] hover:bg-[var(--color-danger-soft)]"
+            className="mt-6 inline-flex min-h-12 items-center justify-center gap-2 rounded-xl border border-red-300 px-5 font-semibold text-[var(--color-danger)] hover:bg-[var(--color-danger-soft)] disabled:cursor-not-allowed disabled:opacity-50"
           >
             <Trash2 aria-hidden="true" className="size-4" />
             Eliminar {visibleDeviceName}
@@ -257,9 +300,9 @@ function SettingsPage() {
         </section>
       </div>
 
-      {deleteModalOpen && (
+      {deleteModalOpen && device && (
         <ConfirmDeleteModal
-          deviceName={visibleDeviceName}
+          deviceName={device.nombre}
           onCancel={() => setDeleteModalOpen(false)}
           onConfirm={handleDeleteConfirm}
         />
