@@ -38,6 +38,41 @@ function getHourlyTrend(readings, dataKey) {
   }
 }
 
+// Calcula el estado visual de cada sensor de forma independiente.
+// Los umbrales reales guardados en el dispositivo son la fuente de verdad.
+function getSensorStatus({
+  value,
+  min,
+  max,
+  lowStatus,
+  highStatus,
+  fallbackStatus,
+  statusPrefix,
+}) {
+  const numericValue = Number(value)
+  const numericMin = Number(min)
+  const numericMax = Number(max)
+
+  if (
+    Number.isFinite(numericValue) &&
+    Number.isFinite(numericMin) &&
+    Number.isFinite(numericMax)
+  ) {
+    if (numericValue < numericMin) return lowStatus
+    if (numericValue > numericMax) return highStatus
+    return 'normal'
+  }
+
+  if (
+    typeof fallbackStatus === 'string' &&
+    fallbackStatus.startsWith(statusPrefix)
+  ) {
+    return fallbackStatus
+  }
+
+  return 'normal'
+}
+
 function DashboardPage() {
   const [device, setDevice] = useState(null)
   const [currentReading, setCurrentReading] = useState(null)
@@ -76,6 +111,26 @@ function DashboardPage() {
 
   const thresholds = device?.thresholds
 
+  const temperatureStatus = getSensorStatus({
+    value: currentReading?.temperature,
+    min: thresholds?.tempMin,
+    max: thresholds?.tempMax,
+    lowStatus: 'temp_baja',
+    highStatus: 'temp_alta',
+    fallbackStatus: currentReading?.status,
+    statusPrefix: 'temp_',
+  })
+
+  const humidityStatus = getSensorStatus({
+    value: currentReading?.humidity,
+    min: thresholds?.humMin,
+    max: thresholds?.humMax,
+    lowStatus: 'hum_baja',
+    highStatus: 'hum_alta',
+    fallbackStatus: currentReading?.status,
+    statusPrefix: 'hum_',
+  })
+
   return (
     <main className="page-shell">
       <div className="mb-8 flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
@@ -110,11 +165,7 @@ function DashboardPage() {
             subtitle="Sensor DHT11"
             value={currentReading?.temperature}
             unit="°C"
-            status={
-              currentReading?.status?.startsWith('temp_')
-                ? currentReading.status
-                : 'normal'
-            }
+            status={temperatureStatus}
             range={
               thresholds
                 ? 'Rango: ' + thresholds.tempMin + ' °C – ' + thresholds.tempMax + ' °C'
@@ -132,11 +183,7 @@ function DashboardPage() {
             subtitle="Sensor DHT11"
             value={currentReading?.humidity}
             unit="%"
-            status={
-              currentReading?.status?.startsWith('hum_')
-                ? currentReading.status
-                : 'normal'
-            }
+            status={humidityStatus}
             range={
               thresholds
                 ? 'Rango: ' + thresholds.humMin + ' % – ' + thresholds.humMax + ' %'
