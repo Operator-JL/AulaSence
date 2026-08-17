@@ -91,7 +91,10 @@ function DashboardPage() {
       </div>
 
       {errorMessage && (
-        <p className="mb-6 rounded-xl border border-red-200 bg-[var(--color-danger-soft)] px-4 py-3 text-sm leading-5 text-[var(--color-danger)]" role="alert">
+        <p
+          className="mb-6 rounded-xl border border-red-200 bg-[var(--color-danger-soft)] px-4 py-3 text-sm leading-5 text-[var(--color-danger)]"
+          role="alert"
+        >
           {errorMessage}
         </p>
       )}
@@ -107,7 +110,11 @@ function DashboardPage() {
             subtitle="Sensor DHT11"
             value={currentReading?.temperature}
             unit="°C"
-            status={currentReading?.status ?? 'normal'}
+            status={
+              currentReading?.status?.startsWith('temp_')
+                ? currentReading.status
+                : 'normal'
+            }
             range={
               thresholds
                 ? 'Rango: ' + thresholds.tempMin + ' °C – ' + thresholds.tempMax + ' °C'
@@ -118,13 +125,18 @@ function DashboardPage() {
             data={readings}
             dataKey="temperature"
           />
+
           <SensorChart
             type="humidity"
             title="Humedad relativa"
             subtitle="Sensor DHT11"
             value={currentReading?.humidity}
             unit="%"
-            status="normal"
+            status={
+              currentReading?.status?.startsWith('hum_')
+                ? currentReading.status
+                : 'normal'
+            }
             range={
               thresholds
                 ? 'Rango: ' + thresholds.humMin + ' % – ' + thresholds.humMax + ' %'

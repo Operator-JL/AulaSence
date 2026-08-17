@@ -1,4 +1,6 @@
+import { useCallback, useEffect, useState } from 'react';
 import { Link, NavLink, useLocation } from 'react-router-dom';
+import { api } from '../services/api';
 
 const navigationItems = [
   { label: 'Resumen', to: '/resumen' },
@@ -6,8 +8,59 @@ const navigationItems = [
   { label: 'Configuración', to: '/configuracion' },
 ];
 
+const REFRESH_INTERVAL_MS = 30_000;
+
 export default function Header() {
   const { pathname } = useLocation();
+  const [deviceOnline, setDeviceOnline] = useState(null);
+
+  const loadDeviceStatus = useCallback(async () => {
+    try {
+      const devices = await api.getDevices();
+      const firstDevice = devices?.[0];
+
+      if (!firstDevice) {
+        setDeviceOnline(false);
+        return;
+      }
+
+      setDeviceOnline(Boolean(firstDevice.online));
+    } catch {
+      setDeviceOnline(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadDeviceStatus();
+
+    const intervalId = window.setInterval(
+      loadDeviceStatus,
+      REFRESH_INTERVAL_MS,
+    );
+
+    return () => window.clearInterval(intervalId);
+  }, [loadDeviceStatus]);
+
+  const connectionLabel =
+    deviceOnline === null
+      ? 'Comprobando ESP32...'
+      : deviceOnline
+        ? 'ESP32 conectado'
+        : 'ESP32 desconectado';
+
+  const connectionStyles =
+    deviceOnline === null
+      ? 'border-[var(--color-border)] bg-white text-[var(--color-muted)]'
+      : deviceOnline
+        ? 'border-[#d8eee7] bg-[var(--color-primary-soft)] text-[#126b60]'
+        : 'border-red-200 bg-[var(--color-danger-soft)] text-[var(--color-danger)]';
+
+  const indicatorStyles =
+    deviceOnline === null
+      ? 'bg-[var(--color-muted)]'
+      : deviceOnline
+        ? 'bg-[var(--color-success)] shadow-[0_0_0_4px_rgb(24_173_101_/_8%)]'
+        : 'bg-[var(--color-danger)] shadow-[0_0_0_4px_rgb(220_38_38_/_8%)]';
 
   return (
     <header className="border-b border-[var(--color-border)] bg-white">
@@ -50,12 +103,14 @@ export default function Header() {
           })}
         </nav>
 
-        <div className="inline-flex items-center gap-1.5 justify-self-end rounded-full border border-[#d8eee7] bg-[var(--color-primary-soft)] px-2.5 py-2 text-[0.7rem] font-medium whitespace-nowrap text-[#126b60] sm:gap-2 sm:px-5 sm:text-sm lg:col-start-3 lg:row-start-1">
+        <div
+          className={`inline-flex items-center gap-1.5 justify-self-end rounded-full border px-2.5 py-2 text-[0.7rem] font-medium whitespace-nowrap sm:gap-2 sm:px-5 sm:text-sm lg:col-start-3 lg:row-start-1 ${connectionStyles}`}
+        >
           <span
-            className="h-2.5 w-2.5 rounded-full bg-[var(--color-success)] shadow-[0_0_0_4px_rgb(24_173_101_/_8%)]"
+            className={`h-2.5 w-2.5 rounded-full ${indicatorStyles}`}
             aria-hidden="true"
           />
-          <span>ESP32 conectado</span>
+          <span>{connectionLabel}</span>
         </div>
       </div>
     </header>
