@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import ActuatorPanel from '../components/ActuatorPanel'
 import ReadingsTable from '../components/ReadingsTable'
 import { api } from '../services/api'
@@ -29,7 +29,40 @@ function validateThresholds(values) {
   return errors
 }
 
-function ThresholdCard({ device }) {
+// Calcula el estado visual con los umbrales actuales del dispositivo.
+// Si algún dato no es válido, conserva el estado recibido desde el backend.
+function getReadingStatus(reading, thresholds) {
+  if (!thresholds) return reading.status ?? 'normal'
+
+  const temperature = Number(reading.temperature)
+  const humidity = Number(reading.humidity)
+  const tempMin = Number(thresholds.tempMin)
+  const tempMax = Number(thresholds.tempMax)
+  const humMin = Number(thresholds.humMin)
+  const humMax = Number(thresholds.humMax)
+
+  const valuesAreValid = [
+    temperature,
+    humidity,
+    tempMin,
+    tempMax,
+    humMin,
+    humMax,
+  ].every(Number.isFinite)
+
+  if (!valuesAreValid) {
+    return reading.status ?? 'normal'
+  }
+
+  if (temperature > tempMax) return 'temp_alta'
+  if (temperature < tempMin) return 'temp_baja'
+  if (humidity > humMax) return 'hum_alta'
+  if (humidity < humMin) return 'hum_baja'
+
+  return 'normal'
+}
+
+function ThresholdCard({ device, onUpdated }) {
   const [values, setValues] = useState({
     tempMin: String(device.thresholds.tempMin),
     tempMax: String(device.thresholds.tempMax),
@@ -43,15 +76,26 @@ function ThresholdCard({ device }) {
 
   const handleChange = (event) => {
     const { name, value } = event.target
-    setValues((current) => ({ ...current, [name]: value }))
-    setErrors((current) => ({ ...current, [name]: undefined }))
+
+    setValues((current) => ({
+      ...current,
+      [name]: value,
+    }))
+
+    setErrors((current) => ({
+      ...current,
+      [name]: undefined,
+    }))
+
     setSaved(false)
     setSaveError('')
   }
 
   const handleSubmit = async (event) => {
     event.preventDefault()
+
     const nextErrors = validateThresholds(values)
+
     setErrors(nextErrors)
     setSaved(false)
     setSaveError('')
@@ -59,53 +103,108 @@ function ThresholdCard({ device }) {
     if (Object.keys(nextErrors).length > 0) return
 
     setSaving(true)
+
     try {
-      await api.updateDevice(device.id, {
+      const updatedDevice = await api.updateDevice(device.id, {
         tempMin: Number(values.tempMin),
         tempMax: Number(values.tempMax),
         humMin: Number(values.humMin),
         humMax: Number(values.humMax),
       })
+
+      if (updatedDevice) {
+        onUpdated?.(updatedDevice)
+      }
+
       setSaved(true)
     } catch (error) {
-      setSaveError(error.message || 'No fue posible guardar los umbrales.')
+      setSaveError(
+        error.message || 'No fue posible guardar los umbrales.',
+      )
     } finally {
       setSaving(false)
     }
   }
 
   return (
-    <section className="surface-card p-5 sm:p-6" aria-labelledby="threshold-title">
-      <h2 id="threshold-title" className="text-lg font-bold">Umbrales de alerta</h2>
+    <section
+      className="surface-card p-5 sm:p-6"
+      aria-labelledby="threshold-title"
+    >
+      <h2
+        id="threshold-title"
+        className="text-lg font-bold"
+      >
+        Umbrales de alerta
+      </h2>
+
       <p className="mt-1 text-sm leading-6 text-[var(--color-muted)]">
         El LED y el buzzer se activan al superar estos valores.
       </p>
 
-      <form className="mt-6" onSubmit={handleSubmit} noValidate>
+      <form
+        className="mt-6"
+        onSubmit={handleSubmit}
+        noValidate
+      >
         <fieldset>
-          <legend className="mb-3 font-semibold">Temperatura</legend>
+          <legend className="mb-3 font-semibold">
+            Temperatura
+          </legend>
+
           <div className="grid grid-cols-2 gap-3">
             {thresholdFields.slice(0, 2).map((field) => (
-              <ThresholdField key={field.id} {...field} value={values[field.id]} error={errors[field.id]} onChange={handleChange} />
+              <ThresholdField
+                key={field.id}
+                {...field}
+                value={values[field.id]}
+                error={errors[field.id]}
+                onChange={handleChange}
+              />
             ))}
           </div>
         </fieldset>
 
         <fieldset className="mt-6">
-          <legend className="mb-3 font-semibold">Humedad</legend>
+          <legend className="mb-3 font-semibold">
+            Humedad
+          </legend>
+
           <div className="grid grid-cols-2 gap-3">
             {thresholdFields.slice(2).map((field) => (
-              <ThresholdField key={field.id} {...field} value={values[field.id]} error={errors[field.id]} onChange={handleChange} />
+              <ThresholdField
+                key={field.id}
+                {...field}
+                value={values[field.id]}
+                error={errors[field.id]}
+                onChange={handleChange}
+              />
             ))}
           </div>
         </fieldset>
 
-        <button type="submit" className="primary-button mt-5 w-full disabled:cursor-not-allowed disabled:opacity-65" disabled={saving}>
+        <button
+          type="submit"
+          className="primary-button mt-5 w-full disabled:cursor-not-allowed disabled:opacity-65"
+          disabled={saving}
+        >
           {saving ? 'Guardando...' : 'Guardar umbrales'}
         </button>
-        {saved && <p className="notice mt-3" role="status">Umbrales guardados correctamente</p>}
+
+        {saved && (
+          <p
+            className="notice mt-3"
+            role="status"
+          >
+            Umbrales guardados correctamente
+          </p>
+        )}
+
         {saveError && (
-          <p className="mt-3 rounded-xl border border-red-200 bg-[var(--color-danger-soft)] px-4 py-3 text-sm leading-5 text-[var(--color-danger)]" role="alert">
+          <p
+            className="mt-3 rounded-xl border border-red-200 bg-[var(--color-danger-soft)] px-4 py-3 text-sm leading-5 text-[var(--color-danger)]"
+            role="alert"
+          >
             {saveError}
           </p>
         )}
@@ -114,12 +213,24 @@ function ThresholdCard({ device }) {
   )
 }
 
-function ThresholdField({ id, label, value, error, onChange }) {
+function ThresholdField({
+  id,
+  label,
+  value,
+  error,
+  onChange,
+}) {
   const errorId = `${id}-error`
 
   return (
     <div className="min-w-0">
-      <label htmlFor={id} className="mb-1.5 block text-xs font-medium text-[var(--color-muted)]">{label}</label>
+      <label
+        htmlFor={id}
+        className="mb-1.5 block text-xs font-medium text-[var(--color-muted)]"
+      >
+        {label}
+      </label>
+
       <input
         id={id}
         name={id}
@@ -129,9 +240,19 @@ function ThresholdField({ id, label, value, error, onChange }) {
         onChange={onChange}
         aria-invalid={Boolean(error)}
         aria-describedby={error ? errorId : undefined}
-        className={`field-input ${error ? 'border-red-400' : ''}`}
+        className={`field-input ${
+          error ? 'border-red-400' : ''
+        }`}
       />
-      {error && <p id={errorId} className="mt-1.5 text-xs leading-4 text-[var(--color-danger)]">{error}</p>}
+
+      {error && (
+        <p
+          id={errorId}
+          className="mt-1.5 text-xs leading-4 text-[var(--color-danger)]"
+        >
+          {error}
+        </p>
+      )}
     </div>
   )
 }
@@ -155,15 +276,24 @@ function HistoryPage() {
             setLoadError(true)
             setLoading(false)
           }
+
           return
         }
 
-        const history = await api.getReadings(firstDevice.id, { limit: 500 })
+        const history = await api.getReadings(
+          firstDevice.id,
+          { limit: 500 },
+        )
 
         if (!cancelled) {
           setDevice(firstDevice)
-          // La API devuelve la serie ascendente; la tabla muestra lo más reciente primero.
-          setReadings([...(history?.readings ?? [])].reverse())
+
+          // La API devuelve la serie ascendente;
+          // la tabla muestra lo más reciente primero.
+          setReadings(
+            [...(history?.readings ?? [])].reverse(),
+          )
+
           setLoading(false)
         }
       } catch {
@@ -175,25 +305,63 @@ function HistoryPage() {
     }
 
     loadData()
+
     return () => {
       cancelled = true
     }
   }, [])
 
-  const handleExport = () => exportReadingsToExcel(readings)
+  // Conservamos intactas las lecturas originales y generamos únicamente
+  // la representación usada por la interfaz y la exportación.
+  const displayReadings = useMemo(() => {
+    if (!device?.thresholds) {
+      return readings
+    }
+
+    return readings.map((reading) => ({
+      ...reading,
+      status: getReadingStatus(
+        reading,
+        device.thresholds,
+      ),
+    }))
+  }, [readings, device])
+
+  const handleExport = () => {
+    exportReadingsToExcel(displayReadings)
+  }
 
   return (
     <main className="page-shell">
       <div className="mb-8">
-        <h1 className="page-title">Historial</h1>
-        <p className="page-subtitle">Consulta lecturas guardadas y define cuándo activar las alertas</p>
+        <h1 className="page-title">
+          Historial
+        </h1>
+
+        <p className="page-subtitle">
+          Consulta lecturas guardadas y define cuándo activar las alertas
+        </p>
       </div>
 
       <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1.85fr)_minmax(300px,1fr)] xl:gap-6">
-        <ReadingsTable readings={readings} onExport={handleExport} loading={loading} error={loadError} />
+        <ReadingsTable
+          readings={displayReadings}
+          onExport={handleExport}
+          loading={loading}
+          error={loadError}
+        />
 
-        <aside className="grid min-w-0 gap-5 md:grid-cols-2 lg:grid-cols-1 xl:gap-6" aria-label="Configuración de alertas y actuadores">
-          {device && <ThresholdCard device={device} />}
+        <aside
+          className="grid min-w-0 gap-5 md:grid-cols-2 lg:grid-cols-1 xl:gap-6"
+          aria-label="Configuración de alertas y actuadores"
+        >
+          {device && (
+            <ThresholdCard
+              device={device}
+              onUpdated={setDevice}
+            />
+          )}
+
           <ActuatorPanel device={device} />
         </aside>
       </div>
